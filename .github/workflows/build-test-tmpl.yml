@@ -27,7 +27,7 @@ jobs:
       with:
         submodules: true
         ssh-key: ${{ secrets.token }}
-    - uses: actions/download-artifact@v6
+    - uses: actions/download-artifact@v7
       with:
         name: catalog
       if: inputs.generate-catalog != true
@@ -66,7 +66,7 @@ jobs:
           exit -1
         fi
       shell: bash
-    - uses: actions/upload-artifact@v5
+    - uses: actions/upload-artifact@v6
       with:
         name: catalog
         path: |
