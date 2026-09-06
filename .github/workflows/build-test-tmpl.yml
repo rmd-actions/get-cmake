@@ -17,21 +17,26 @@ jobs:
   build_and_test:
     name: '${{ matrix.os }}: build and test'
     runs-on: ${{ matrix.os }}
+    # The token this job receives is granted by the caller, in 'build-test.yml':
+    # this workflow is invoked once with 'generate-catalog: true' and twice with
+    # 'false', and only the former needs to write. Since a job cannot vary its
+    # 'permissions' according to an input, declaring the grant here would hand the
+    # write scopes to the ordinary build and test invocations too.
     strategy:
       fail-fast: false
       matrix:
         os: ${{ fromJson(inputs.runs-on) }}
 
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       with:
         submodules: true
         ssh-key: ${{ secrets.token }}
-    - uses: actions/download-artifact@v8
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
       with:
         name: catalog
       if: inputs.generate-catalog != true
-    - uses: actions/setup-node@v6
+    - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38  # v6
       with:
         node-version: '24.x'
     - run: npm install
@@ -66,9 +71,14 @@ jobs:
           exit -1
         fi
       shell: bash
-    - uses: actions/upload-artifact@v7
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
       with:
         name: catalog
+        # The marker files are hidden, and upload-artifact drops hidden files unless
+        # told otherwise: without this the artifact would carry the catalog alone, and
+        # the downstream jobs would validate the freshly installed CMake and Ninja
+        # against the stale marker files committed in the branch being built.
+        include-hidden-files: true
         path: |
           .latest_ninja_version
           .latest_cmake_version
@@ -78,10 +88,16 @@ jobs:
     - name: If there is a new CMake version, create a Git commit for the PR
       id: git-check
       run: |
-        if ! git diff --exit-code .latest_cmake_version ; then
+        # Compare the freshly generated versions against 'main', the branch the
+        # automated pull request targets, and not against the checked out ref: a
+        # branch forked before the last version bump still carries the previous
+        # version, hence it would look like it introduces a new one and would spawn
+        # a duplicate of an already merged automated pull request.
+        git fetch --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+        if ! git diff --exit-code origin/main -- .latest_cmake_version ; then
           export CMAKE_NEW_VERSIONS=cmake-v$(cat .latest_cmake_version)
         fi
-        if ! git diff --exit-code .latestrc_cmake_version ; then
+        if ! git diff --exit-code origin/main -- .latestrc_cmake_version ; then
           export CMAKE_NEW_VERSIONS="${CMAKE_NEW_VERSIONS} cmake-rc-v$(cat .latestrc_cmake_version)"
         fi
         if [[ -n "${CMAKE_NEW_VERSIONS}" ]]; then
@@ -95,10 +111,10 @@ jobs:
         else
           echo "There is no new version of CMake."
         fi
-      if: ${{ inputs.generate-catalog == true }}
+      if: ${{ inputs.generate-catalog == true && github.ref == 'refs/heads/main' }}
 
     - name: Create the PR for new CMake version(s)
-      uses: peter-evans/create-pull-request@v8
+      uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1  # v8
       with:
         title: '[Automated] Adding ${{ env.CMAKE_NEW_VERSIONS }}'
         body: "Add to catalog new CMake version(s): ${{ env.CMAKE_NEW_VERSIONS }}"
